@@ -163,13 +163,13 @@ def write_sentences_to_disk(output_file, indices, scores, seen_src, seen_trg, so
     print("Done. {} sentences written".format(sentences_written))
 
 
-def write_sentences_to_csv(output_file, indices, scores, seen_src, seen_trg, source_sentences, target_sentences,
+def write_best_sentences_to_csv(output_file, file_id, indices, scores, seen_src, seen_trg, source_sentences, target_sentences,
                     min_threshold):
     # Extact list of parallel sentences
     print("Write sentences to disc")
     sentences_written = 0
     with open(output_file, 'a', encoding='utf8') as fOut:
-        header = ['score', 'src', 'tgt']
+        header = ['file_id', 'score', 'src', 'tgt']
         writer = csv.writer(fOut)
 
         # write the header
@@ -189,12 +189,42 @@ def write_sentences_to_csv(output_file, indices, scores, seen_src, seen_trg, sou
                 # fOut.write("{:.4f}\t{}\t{}\n".format(scores[i], source_sentences[src_ind].replace("\t", " "),
                 #                                      target_sentences[trg_ind].replace("\t", " ")))
 
-                data = [scores[i], source_sentences[src_ind], target_sentences[trg_ind]]
+                data = [file_id, scores[i], source_sentences[src_ind], target_sentences[trg_ind]]
                 print(data)
 
                 # write the data
                 writer.writerow(data)
                 sentences_written += 1
+
+        print("Done. {} sentences written".format(sentences_written))
+
+
+def write_all_sentences_to_csv(output_file, file_id, indices, scores, seen_src, seen_trg, source_sentences, target_sentences,
+                    min_threshold):
+    # Extact list of parallel sentences
+    print("Write sentences to disc")
+    sentences_written = 0
+    with open(output_file, 'a', encoding='utf8') as fOut:
+        header = ['file_id', 'source_id', 'target_id', 'score', 'src', 'tgt']
+        writer = csv.writer(fOut)
+
+        # write the header
+        writer.writerow(header)
+
+        written_scores = set()
+        for i in np.argsort(-scores):
+            src_ind, trg_ind = indices[i]
+            src_ind = int(src_ind)
+            trg_ind = int(trg_ind)
+            score = scores[i]
+
+            if score not in written_scores:
+                written_scores.add(score)
+                data = [file_id, src_ind, trg_ind, score, source_sentences[src_ind], target_sentences[trg_ind]]
+                print(data)
+
+                # write the data
+                writer.writerow(data)
 
         print("Done. {} sentences written".format(sentences_written))
 
@@ -209,7 +239,7 @@ def main():
     # input folders
     source_folder = 'data/kas/slo_eng_abs/slo'
     # target_folder = 'data/kas/slo_eng_abs/eng'
-    output_file = "parallel-sentences-KAS.csv"
+    output_file = "parallel-sentences-KAS-full.csv"
     tokenized = False
 
     # Only consider sentences that are between min_sent_len and max_sent_len characters long
@@ -241,11 +271,12 @@ def main():
     for file in os.scandir(source_folder):
         # get file id
         file_id = file.name.split('-')[1]
-        print(file_id)
+        print('FILE ID:', file_id)
 
         # Input files. We interpret every line as sentence.
         source_file = f"data/kas/slo_eng_abs/slo/kas-{file_id}-abs-sl.txt"
         target_file = f"data/kas/slo_eng_abs/eng/kas-{file_id}-abs-en.txt"
+        output_file = f"output/one2one/{file_id}.csv"
 
         # get sentences
         source_sentences, target_sentences = get_sentences(source_file,
@@ -279,8 +310,19 @@ def main():
         #                 target_sentences,
         #                 min_threshold)
 
-        # write sentences to disk
-        write_sentences_to_csv(output_file,
+        # # write sentences to disk
+        # write_best_sentences_to_csv(output_file,
+        #                 file_id,
+        #                 indices,
+        #                 scores,
+        #                 seen_src,
+        #                 seen_trg,
+        #                 source_sentences,
+        #                 target_sentences,
+        #                 min_threshold)
+
+        write_all_sentences_to_csv(output_file,
+                        file_id,
                         indices,
                         scores,
                         seen_src,
@@ -288,7 +330,6 @@ def main():
                         source_sentences,
                         target_sentences,
                         min_threshold)
-
 
 if __name__ == '__main__':
     main()
