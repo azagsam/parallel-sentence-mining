@@ -19,6 +19,7 @@ import torch
 from nltk import sent_tokenize
 import pandas as pd
 import csv
+from collections import defaultdict
 
 
 # if use_pca:
@@ -176,20 +177,20 @@ def write_best_sentences_to_csv(output_file, file_id, indices, scores, seen_src,
         writer.writerow(header)
 
         for i in np.argsort(-scores):
-            src_ind, trg_ind = indices[i]
+            src_ind, tgt_ind = indices[i]
             src_ind = int(src_ind)
-            trg_ind = int(trg_ind)
+            tgt_ind = int(tgt_ind)
 
             if scores[i] < min_threshold:
                 break
 
-            if src_ind not in seen_src and trg_ind not in seen_trg:
+            if src_ind not in seen_src and tgt_ind not in seen_trg:
                 seen_src.add(src_ind)
-                seen_trg.add(trg_ind)
+                seen_trg.add(tgt_ind)
                 # fOut.write("{:.4f}\t{}\t{}\n".format(scores[i], source_sentences[src_ind].replace("\t", " "),
-                #                                      target_sentences[trg_ind].replace("\t", " ")))
+                #                                      target_sentences[tgt_ind].replace("\t", " ")))
 
-                data = [file_id, scores[i], source_sentences[src_ind], target_sentences[trg_ind]]
+                data = [file_id, scores[i], source_sentences[src_ind], target_sentences[tgt_ind]]
                 print(data)
 
                 # write the data
@@ -199,8 +200,8 @@ def write_best_sentences_to_csv(output_file, file_id, indices, scores, seen_src,
         print("Done. {} sentences written".format(sentences_written))
 
 
-def write_all_sentences_to_csv(output_file, file_id, indices, scores, seen_src, seen_trg, source_sentences, target_sentences,
-                    min_threshold):
+def write_all_sentences_to_csv_one2one(output_file, file_id, indices, scores, source_sentences, target_sentences,
+                                       min_threshold):
     # Extact list of parallel sentences
     print("Write sentences to disc")
     sentences_written = 0
@@ -213,20 +214,102 @@ def write_all_sentences_to_csv(output_file, file_id, indices, scores, seen_src, 
 
         written_scores = set()
         for i in np.argsort(-scores):
-            src_ind, trg_ind = indices[i]
+            src_ind, tgt_ind = indices[i]
             src_ind = int(src_ind)
-            trg_ind = int(trg_ind)
+            tgt_ind = int(tgt_ind)
             score = scores[i]
 
             if score not in written_scores:
                 written_scores.add(score)
-                data = [file_id, src_ind, trg_ind, score, source_sentences[src_ind], target_sentences[trg_ind]]
+                data = [file_id, src_ind, tgt_ind, score, source_sentences[src_ind], target_sentences[tgt_ind]]
                 print(data)
 
                 # write the data
                 writer.writerow(data)
 
         print("Done. {} sentences written".format(sentences_written))
+
+
+def write_all_sentences_to_csv_merged(output_file, file_id, indices, scores, source_sentences, target_sentences,
+                                       min_threshold):
+    # merge directions
+    tgt2src = defaultdict(list)
+    src2tgt = defaultdict(list)
+    written_scores = set()
+    for i in np.argsort(-scores):
+        src_ind, tgt_ind = indices[i]
+        src_ind = int(src_ind)
+        tgt_ind = int(tgt_ind)
+        score = scores[i]
+
+        # filter duplicates and sentence pairs below given threshold
+        if score not in written_scores and score > min_threshold:
+            written_scores.add(score)
+            data = [file_id, src_ind, tgt_ind, score, source_sentences[src_ind], target_sentences[tgt_ind]]
+            tgt2src[src_ind].append(data)
+            src2tgt[tgt_ind].append(data)
+            print(data)
+
+    # simplify and merge target sentences
+    tgt2src_merged = {}
+    for ind, value in tgt2src.items():
+        src_idx, src_sent = "", ""
+        merged_tgt = []
+        scores = []
+        for file_id, src_ind, tgt_ind, score, source_sentence, target_sentence in value:
+            src_idx, src_sent = src_ind, source_sentence
+            merged_tgt.append(target_sentence)
+            scores.append(score)
+        merged_tgt = " ".join(merged_tgt)
+        avg_score = np.mean(scores)
+        if len(value) > 1:
+            merged = True
+        else:
+            merged = False
+        tgt2src_merged[src_idx] = [file_id, avg_score, src_sent, merged_tgt, merged]
+
+    # simplify and merge source sentences
+    src2tgt_merged = {}
+    for ind, value in src2tgt.items():
+        tgt_idx, tgt_sent = "", ""
+        merged_src = []
+        scores = []
+        for file_id, src_ind, tgt_ind, score, source_sentence, target_sentence in value:
+            tgt_idx, tgt_sent = tgt_ind, target_sentence
+            merged_src.append(source_sentence)
+            scores.append(score)
+        merged_src = " ".join(merged_src)
+        avg_score = np.mean(scores)
+        if len(value) > 1:
+            merged = True
+        else:
+            merged = False
+        src2tgt_merged[tgt_idx] = [file_id, avg_score, tgt_sent, merged_src, merged]
+
+    if file_id == '8937837':
+        print()
+
+    # eliminate single sentences that were merged into complex sentences
+    added_sentences = ""
+    output = []
+    merged_both_way = [pair for pair in tgt2src_merged.values()] + [pair for pair in src2tgt_merged.values()]
+    merged_both_way.sort(key=lambda x: (x[4], x[1]), reverse=True)  # sort first by merged and by score
+    for pair in merged_both_way:
+        if pair[2] not in added_sentences or pair[3] not in added_sentences:
+            added_sentences += pair[2] + pair[3]  # add source and target sentences to added sentences
+            output.append(pair)
+    output.sort(key=lambda x: x[1], reverse=True)  # sort by score
+
+    # write to disk
+    with open(output_file, 'w', encoding='utf8') as fOut:
+        header = ['file_id', 'avg_score', 'src', 'tgt', 'merged']
+        writer = csv.writer(fOut)
+
+        # write the header
+        writer.writerow(header)
+
+        for row in output:
+            writer.writerow(row)
 
 
 def main():
@@ -250,7 +333,7 @@ def main():
     knn_neighbors = 4
 
     # Min score for text pairs. Note, score can be larger than 1
-    min_threshold = 1
+    min_threshold = 1.1
 
     # Do we want to use exact search of approximate nearest neighbor search (ANN)
     # Exact search: Slower, but we don't miss any parallel sentences
@@ -276,7 +359,7 @@ def main():
         # Input files. We interpret every line as sentence.
         source_file = f"data/kas/slo_eng_abs/slo/kas-{file_id}-abs-sl.txt"
         target_file = f"data/kas/slo_eng_abs/eng/kas-{file_id}-abs-en.txt"
-        output_file = f"output/one2one/{file_id}.csv"
+        output_file = f"output/merged/{file_id}.csv"
 
         # get sentences
         source_sentences, target_sentences = get_sentences(source_file,
@@ -321,15 +404,21 @@ def main():
         #                 target_sentences,
         #                 min_threshold)
 
-        write_all_sentences_to_csv(output_file,
-                        file_id,
-                        indices,
-                        scores,
-                        seen_src,
-                        seen_trg,
-                        source_sentences,
-                        target_sentences,
-                        min_threshold)
+        write_all_sentences_to_csv_one2one(output_file,
+                                           file_id,
+                                           indices,
+                                           scores,
+                                           source_sentences,
+                                           target_sentences,
+                                           min_threshold)
+
+        write_all_sentences_to_csv_merged(output_file,
+                                           file_id,
+                                           indices,
+                                           scores,
+                                           source_sentences,
+                                           target_sentences,
+                                           min_threshold)
 
 if __name__ == '__main__':
     main()
