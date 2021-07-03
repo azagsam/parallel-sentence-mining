@@ -7,6 +7,7 @@ A large source for monolingual sentences in different languages is:
 http://data.statmt.org/cc-100/
 This script requires that you have FAISS installed:
 https://github.com/facebookresearch/faiss
+todo: progress bar
 """
 import os
 import stanza
@@ -20,6 +21,8 @@ from nltk import sent_tokenize
 import pandas as pd
 import csv
 from collections import defaultdict
+import langid
+from tqdm import tqdm
 
 
 # if use_pca:
@@ -52,7 +55,7 @@ from collections import defaultdict
 
 def get_sentences(source_file, target_file, min_sent_len, max_sent_len, tokenized, en_tokenizer, sl_tokenizer):
     if tokenized:
-        print("Read source file")
+        # print("Read source file")
         source_sentences = set()
         with file_open(source_file) as fIn:
             for line in tqdm.tqdm(fIn):
@@ -60,7 +63,7 @@ def get_sentences(source_file, target_file, min_sent_len, max_sent_len, tokenize
                 if len(line) >= min_sent_len and len(line) <= max_sent_len:
                     source_sentences.add(line)
 
-        print("Read target file")
+        # print("Read target file")
         target_sentences = set()
         with file_open(target_file) as fIn:
             for line in tqdm.tqdm(fIn):
@@ -68,7 +71,7 @@ def get_sentences(source_file, target_file, min_sent_len, max_sent_len, tokenize
                 if len(line) >= min_sent_len and len(line) <= max_sent_len:
                     target_sentences.add(line)
     else:
-        print("Read source file")
+        # print("Read source file")
         source_sentences = set()
         with file_open(source_file) as fIn:
             # text = sent_tokenize(fIn.read(), language='slovene')
@@ -78,7 +81,7 @@ def get_sentences(source_file, target_file, min_sent_len, max_sent_len, tokenize
                 if len(line) >= min_sent_len and len(line) <= max_sent_len:
                     source_sentences.add(line)
 
-        print("Read target file")
+        # print("Read target file")
         target_sentences = set()
         with file_open(target_file) as fIn:
             # text = sent_tokenize(fIn.read(), language='english')
@@ -88,8 +91,8 @@ def get_sentences(source_file, target_file, min_sent_len, max_sent_len, tokenize
                 if len(line) >= min_sent_len and len(line) <= max_sent_len:
                     target_sentences.add(line)
 
-    print("Source Sentences:", len(source_sentences))
-    print("Target Sentences:", len(target_sentences))
+    # print("Source Sentences:", len(source_sentences))
+    # print("Target Sentences:", len(target_sentences))
 
     return source_sentences, target_sentences
 
@@ -98,13 +101,13 @@ def encode_sentences(model, source_sentences, target_sentences):
     ### Encode source sentences
     source_sentences = list(source_sentences)
 
-    print("Encode source sentences")
+    # print("Encode source sentences")
     source_embeddings = model.encode(source_sentences, show_progress_bar=True, convert_to_numpy=True)
 
     ### Encode target sentences
     target_sentences = list(target_sentences)
 
-    print("Encode target sentences")
+    # print("Encode target sentences")
     target_embeddings = model.encode(target_sentences, show_progress_bar=True, convert_to_numpy=True)
 
     return source_sentences, source_embeddings, target_sentences, target_embeddings
@@ -169,7 +172,8 @@ def write_best_sentences_to_csv(output_file, file_id, indices, scores, seen_src,
     # Extact list of parallel sentences
     print("Write sentences to disc")
     sentences_written = 0
-    with open(output_file, 'a', encoding='utf8') as fOut:
+    output_file = f'output/best/{output_file}'
+    with open(output_file, 'w', encoding='utf8') as fOut:
         header = ['file_id', 'score', 'src', 'tgt']
         writer = csv.writer(fOut)
 
@@ -205,7 +209,8 @@ def write_all_sentences_to_csv_one2one(output_file, file_id, indices, scores, so
     # Extact list of parallel sentences
     print("Write sentences to disc")
     sentences_written = 0
-    with open(output_file, 'a', encoding='utf8') as fOut:
+    output_file = f'output/one2one/{output_file}'
+    with open(output_file, 'w', encoding='utf8') as fOut:
         header = ['file_id', 'source_id', 'target_id', 'score', 'src', 'tgt']
         writer = csv.writer(fOut)
 
@@ -222,7 +227,7 @@ def write_all_sentences_to_csv_one2one(output_file, file_id, indices, scores, so
             if score not in written_scores:
                 written_scores.add(score)
                 data = [file_id, src_ind, tgt_ind, score, source_sentences[src_ind], target_sentences[tgt_ind]]
-                print(data)
+                # print(data)
 
                 # write the data
                 writer.writerow(data)
@@ -248,7 +253,6 @@ def write_all_sentences_to_csv_merged(output_file, file_id, indices, scores, sou
             data = [file_id, src_ind, tgt_ind, score, source_sentences[src_ind], target_sentences[tgt_ind]]
             tgt2src[src_ind].append(data)
             src2tgt[tgt_ind].append(data)
-            print(data)
 
     # simplify and merge target sentences
     tgt2src_merged = {}
@@ -269,7 +273,7 @@ def write_all_sentences_to_csv_merged(output_file, file_id, indices, scores, sou
         tgt2src_merged[src_idx] = [file_id, avg_score, src_sent, merged_tgt, merged]
 
     # simplify and merge source sentences
-    src2tgt_merged = {}
+    src2tgt_merged = {}  # NOTE:
     for ind, value in src2tgt.items():
         tgt_idx, tgt_sent = "", ""
         merged_src = []
@@ -284,9 +288,9 @@ def write_all_sentences_to_csv_merged(output_file, file_id, indices, scores, sou
             merged = True
         else:
             merged = False
-        src2tgt_merged[tgt_idx] = [file_id, avg_score, tgt_sent, merged_src, merged]
+        src2tgt_merged[tgt_idx] = [file_id, avg_score, merged_src, tgt_sent, merged]  # debug: does this solve src and tgt language issues?
 
-    if file_id == '8937837':
+    if file_id == '8937837' or file_id == '9062549':
         print()
 
     # eliminate single sentences that were merged into complex sentences
@@ -300,7 +304,15 @@ def write_all_sentences_to_csv_merged(output_file, file_id, indices, scores, sou
             output.append(pair)
     output.sort(key=lambda x: x[1], reverse=True)  # sort by score
 
+    # verify if all source is slo and all target is eng
+    for file_id, avg_score, src, tgt, merged in output:
+        src_lang = langid.classify(src)[0]
+        tgt_lang = langid.classify(tgt)[0]
+        if src_lang != 'sl' or tgt_lang != 'en':
+            raise ValueError(f'In file {file_id}, src_lang is not Slovene or tgt_lang is not English!')
+
     # write to disk
+    output_file = f'output/merged/{output_file}'
     with open(output_file, 'w', encoding='utf8') as fOut:
         header = ['file_id', 'avg_score', 'src', 'tgt', 'merged']
         writer = csv.writer(fOut)
@@ -313,27 +325,12 @@ def write_all_sentences_to_csv_merged(output_file, file_id, indices, scores, sou
 
 
 def main():
-    # Model we want to use for bitext mining. LaBSE achieves state-of-the-art performance
-    model_name = 'LaBSE'
-    model = SentenceTransformer(model_name)
-    en_tokenizer =  stanza.Pipeline('en', use_gpu=True, processors='tokenize')
-    sl_tokenizer =  stanza.Pipeline('sl', use_gpu=True, processors='tokenize')
-
-    # input folders
-    source_folder = 'data/kas/slo_eng_abs/slo'
-    # target_folder = 'data/kas/slo_eng_abs/eng'
-    output_file = "parallel-sentences-KAS-full.csv"
-    tokenized = False
-
     # Only consider sentences that are between min_sent_len and max_sent_len characters long
     min_sent_len = 0
     max_sent_len = 200000
 
     # We base the scoring on k nearest neighbors for each element
     knn_neighbors = 4
-
-    # Min score for text pairs. Note, score can be larger than 1
-    min_threshold = 1.1
 
     # Do we want to use exact search of approximate nearest neighbor search (ANN)
     # Exact search: Slower, but we don't miss any parallel sentences
@@ -351,7 +348,24 @@ def main():
     use_pca = False
     pca_dimensions = 128
 
-    for file in os.scandir(source_folder):
+    # Model we want to use for bitext mining. LaBSE achieves state-of-the-art performance
+    model_name = 'LaBSE'
+    model = SentenceTransformer(model_name)
+
+    # stanza tokenizers
+    en_tokenizer =  stanza.Pipeline('en', use_gpu=True, processors='tokenize')
+    sl_tokenizer =  stanza.Pipeline('sl', use_gpu=True, processors='tokenize')
+    langid.set_languages(['sl', 'en'])
+
+    # input folders
+    source_folder = 'data/kas/slo_eng_abs/slo'
+    # target_folder = 'data/kas/slo_eng_abs/eng'
+    tokenized = False
+
+    # Min score for text pairs. Note, score can be larger than 1
+    min_threshold = 1.1
+
+    for file in tqdm(os.scandir(source_folder)):
         # get file id
         file_id = file.name.split('-')[1]
         print('FILE ID:', file_id)
@@ -359,7 +373,7 @@ def main():
         # Input files. We interpret every line as sentence.
         source_file = f"data/kas/slo_eng_abs/slo/kas-{file_id}-abs-sl.txt"
         target_file = f"data/kas/slo_eng_abs/eng/kas-{file_id}-abs-en.txt"
-        output_file = f"output/merged/{file_id}.csv"
+        output_file = f"{file_id}.csv"
 
         # get sentences
         source_sentences, target_sentences = get_sentences(source_file,
@@ -393,7 +407,6 @@ def main():
         #                 target_sentences,
         #                 min_threshold)
 
-        # # write sentences to disk
         # write_best_sentences_to_csv(output_file,
         #                 file_id,
         #                 indices,
