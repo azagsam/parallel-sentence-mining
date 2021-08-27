@@ -18,3 +18,4 @@ results = pd.read_table('parallel-sentences-out-asistent.tsv', header=None,
 merged = pd.merge(df, results, how='outer', on='sl')
 merged['result'] = merged['en_x'] == merged['en_y']
 print(merged['en_x'] == merged['en_y'])
+merged.to_csv('asistent_evaluated.csv')

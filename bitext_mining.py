@@ -288,7 +288,7 @@ def write_all_sentences_to_csv_merged(output_file, file_id, indices, scores, sou
             merged = True
         else:
             merged = False
-        src2tgt_merged[tgt_idx] = [file_id, avg_score, merged_src, tgt_sent, merged]  # debug: does this solve src and tgt language issues?
+        src2tgt_merged[tgt_idx] = [file_id, avg_score, merged_src, tgt_sent, merged]
 
     if file_id == '8937837' or file_id == '9062549':
         print()
