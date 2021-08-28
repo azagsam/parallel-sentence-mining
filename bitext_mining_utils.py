@@ -37,12 +37,12 @@ def kNN(x, y, k, use_ann_search=False, ann_num_clusters=32768, ann_num_cluster_p
         index.add(y)
         sim, ind = index.search(x, k)
     else:
-        print("Perform exact search")
+        # print("Perform exact search")
         idx = faiss.IndexFlatIP(y.shape[1])
         idx.add(y)
         sim, ind = idx.search(x, k)
 
-    print("Done: {:.2f} sec".format(time.time()-start_time))
+    # print("Done: {:.2f} sec".format(time.time()-start_time))
     return sim, ind
 
 

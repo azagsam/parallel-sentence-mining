@@ -23,7 +23,8 @@ import csv
 from collections import defaultdict
 import langid
 from tqdm import tqdm
-
+import logging
+# logging.basicConfig(filename='bitext_mining.log', level=logging.DEBUG)
 
 # if use_pca:
 #     # We use a smaller number of training sentences to learn the PCA
@@ -102,13 +103,13 @@ def encode_sentences(model, source_sentences, target_sentences):
     source_sentences = list(source_sentences)
 
     # print("Encode source sentences")
-    source_embeddings = model.encode(source_sentences, show_progress_bar=True, convert_to_numpy=True)
+    source_embeddings = model.encode(source_sentences, show_progress_bar=False, convert_to_numpy=True)
 
     ### Encode target sentences
     target_sentences = list(target_sentences)
 
     # print("Encode target sentences")
-    target_embeddings = model.encode(target_sentences, show_progress_bar=True, convert_to_numpy=True)
+    target_embeddings = model.encode(target_sentences, show_progress_bar=False, convert_to_numpy=True)
 
     return source_sentences, source_embeddings, target_sentences, target_embeddings
 
@@ -145,7 +146,6 @@ def score(source_embeddings, target_embeddings, knn_neighbors, use_ann_search, a
 
 def write_sentences_to_disk(output_file, indices, scores, seen_src, seen_trg, source_sentences, target_sentences,
                     min_threshold):
-    # Extact list of parallel sentences
     print("Write sentences to disc")
     sentences_written = 0
     with gzip.open(output_file, 'wt', encoding='utf8') as fOut:
@@ -172,7 +172,6 @@ def write_best_sentences_to_csv(output_file, file_id, indices, scores, seen_src,
     # Extact list of parallel sentences
     print("Write sentences to disc")
     sentences_written = 0
-    output_file = f'output/best/{output_file}'
     with open(output_file, 'w', encoding='utf8') as fOut:
         header = ['file_id', 'score', 'src', 'tgt']
         writer = csv.writer(fOut)
@@ -206,10 +205,8 @@ def write_best_sentences_to_csv(output_file, file_id, indices, scores, seen_src,
 
 def write_all_sentences_to_csv_one2one(output_file, file_id, indices, scores, source_sentences, target_sentences,
                                        min_threshold):
-    # Extact list of parallel sentences
     print("Write sentences to disc")
     sentences_written = 0
-    output_file = f'output/one2one/{output_file}'
     with open(output_file, 'w', encoding='utf8') as fOut:
         header = ['file_id', 'source_id', 'target_id', 'score', 'src', 'tgt']
         writer = csv.writer(fOut)
@@ -290,9 +287,6 @@ def write_all_sentences_to_csv_merged(output_file, file_id, indices, scores, sou
             merged = False
         src2tgt_merged[tgt_idx] = [file_id, avg_score, merged_src, tgt_sent, merged]
 
-    if file_id == '8937837' or file_id == '9062549':
-        print()
-
     # eliminate single sentences that were merged into complex sentences
     added_sentences = ""
     output = []
@@ -309,10 +303,10 @@ def write_all_sentences_to_csv_merged(output_file, file_id, indices, scores, sou
         src_lang = langid.classify(src)[0]
         tgt_lang = langid.classify(tgt)[0]
         if src_lang != 'sl' or tgt_lang != 'en':
-            raise ValueError(f'In file {file_id}, src_lang is not Slovene or tgt_lang is not English!')
+            print(f'In file {file_id}, src_lang is not Slovene or tgt_lang is not English!')
+            return None
 
     # write to disk
-    output_file = f'output/merged/{output_file}'
     with open(output_file, 'w', encoding='utf8') as fOut:
         header = ['file_id', 'avg_score', 'src', 'tgt', 'merged']
         writer = csv.writer(fOut)
@@ -348,6 +342,9 @@ def main():
     use_pca = False
     pca_dimensions = 128
 
+    # Min score for text pairs. Note, score can be larger than 1
+    min_threshold = 1.1
+
     # Model we want to use for bitext mining. LaBSE achieves state-of-the-art performance
     model_name = 'LaBSE'
     model = SentenceTransformer(model_name)
@@ -358,22 +355,25 @@ def main():
     langid.set_languages(['sl', 'en'])
 
     # input folders
-    source_folder = 'data/kas/slo_eng_abs/slo'
-    # target_folder = 'data/kas/slo_eng_abs/eng'
+    data_root = 'data/kas/slo_eng_abs_align'
+    output_folder = 'output/final/'
+    os.makedirs(output_folder, exist_ok=True)
+
+    # tokenized
     tokenized = False
 
-    # Min score for text pairs. Note, score can be larger than 1
-    min_threshold = 1.1
-
-    for file in tqdm(os.scandir(source_folder)):
+    for file in tqdm(os.scandir(os.path.join(data_root, 'slo'))):
         # get file id
         file_id = file.name.split('-')[1]
         print('FILE ID:', file_id)
 
+        if f"{file_id}.csv" in list(os.listdir(output_folder)):
+            continue
+
         # Input files. We interpret every line as sentence.
-        source_file = f"data/kas/slo_eng_abs/slo/kas-{file_id}-abs-sl.txt"
-        target_file = f"data/kas/slo_eng_abs/eng/kas-{file_id}-abs-en.txt"
-        output_file = f"{file_id}.csv"
+        source_file = f"{data_root}/slo/kas-{file_id}-abs-sl.txt"
+        target_file = f"{data_root}/eng/kas-{file_id}-abs-en.txt"
+        output_file = f"{output_folder}/{file_id}.csv"
 
         # get sentences
         source_sentences, target_sentences = get_sentences(source_file,
@@ -417,13 +417,13 @@ def main():
         #                 target_sentences,
         #                 min_threshold)
 
-        write_all_sentences_to_csv_one2one(output_file,
-                                           file_id,
-                                           indices,
-                                           scores,
-                                           source_sentences,
-                                           target_sentences,
-                                           min_threshold)
+        # write_all_sentences_to_csv_one2one(output_file,
+        #                                    file_id,
+        #                                    indices,
+        #                                    scores,
+        #                                    source_sentences,
+        #                                    target_sentences,
+        #                                    min_threshold)
 
         write_all_sentences_to_csv_merged(output_file,
                                            file_id,
