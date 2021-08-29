@@ -1,6 +1,5 @@
 # Bitext mining tool
-A tool for sentence alignment. Adapted from <https://github.
-com/UKPLab/sentence-transformers/tree/master/examples/applications/parallel-sentence-mining>
+A tool for sentence alignment. Adapted from <https://github.com/UKPLab/sentence-transformers/tree/master/examples/applications/parallel-sentence-mining>
 
 ## How to use it
 Set variables and correct paths in `bitext_mining.py`.
